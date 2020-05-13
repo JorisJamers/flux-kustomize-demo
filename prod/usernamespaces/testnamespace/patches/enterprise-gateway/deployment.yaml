@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: enterprise-gateway
+spec:
+  template:
+    spec:
+      containers:
+        - name: enterprise-gateway
+          env:
+            - name: EG_NAMESPACE
+              value: "testnamespace"

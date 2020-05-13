@@ -1,0 +1,154 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  labels:
+    k8s-app: fluent-bit
+data:
+  # Configuration files: server, input, filters and output
+  # ======================================================
+  fluent-bit.conf: |
+    [SERVICE]
+        Parsers_File  parsers.conf
+
+    [INPUT]
+        Name             tail
+        Tag              kube.*
+        # The kubelet creates symlinks in this directory to each container log.
+        # These symlinks are named <pod_name>_<namespace>_<container_name>_<container_id>.
+        # The Kubernetes filter extracts this information from the filename.
+        Path             /var/log/containers/*.log
+        # Save the position of the cursor for each container log file.
+        # If fluent-bit restarts, it will resume from the same location.
+        # Volume gets mounted by the Helm chart config.
+        DB               /var/log/fluent_bit_kube.db
+        # DB.Sync on Full is very intensive for the OS, and the safety it grants
+        # is not necessary. Off is (probably) safe enough.
+        # See: https://docs.fluentbit.io/manual/v/1.3/input/tail
+        DB.Sync         Off
+        Parser           docker
+        Refresh_Interval 10
+        Mem_Buf_Limit    500MB
+        # Skip lines longer than the memory buffer.
+        Skip_Long_Lines  On
+        # Docker splits very long log lines over multiple entries.
+        # This mode merges those log lines back into one.
+        Docker_Mode      On
+    
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        # Parse JSON logs and merge the keys under "log_json".
+        Merge_Log           On
+        Merge_Log_Key       log_json
+        Keep_Log            Off
+        # Enable fluentbit.io annotation functionality.
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude On
+        Labels              On
+        # We do not need to see annotations in the logs.
+
+    # If the "log" key still exists, the log was not parsed by the Kubernetes filter.
+    # In that case, it is not a JSON-formatted log, and we will publish it under "message".
+    
+    [FILTER]
+        Name  modify
+        Match kube.*
+        Condition Key_Does_Not_Exist log_json
+        Rename log message
+    [FILTER]
+        Name          nest
+        Match         kube.*
+        Operation     lift
+        Nested_under  log_json
+
+    # ------------------------------
+    # -- SystemD Log Processing
+    # ------------------------------
+
+    [INPUT]
+        Name              systemd
+        Tag               systemd.*
+        Mem_Buf_Limit     10MB
+        Path              /var/log/journal
+        # Remove leading underscores from journal fields.
+        # Elasticsearch reserves keys with leading underscores for internal use.
+        Strip_Underscores true
+        # Save the position of the cursor for the systemd journal.
+        # If fluent-bit restarts, it will resume from the same location.
+        DB               /var/log/fluent_bit_systemd.db
+
+    # ------------------------------
+    # -- Kubernetes Elasticsearch Output
+    # ------------------------------
+
+    [OUTPUT]
+        Name            es
+        Match           kube.*
+        Host            ${FLUENT_ELASTICSEARCH_HOST}
+        Port            ${FLUENT_ELASTICSEARCH_PORT}
+        # Buffer size used to read the response from the Elasticsearch HTTP service.
+        Buffer_Size     16kb
+        # Name of the document type. "_doc" is what Fluentd uses.
+        Type            _doc
+        # Enable Logstash format compatibility. Required for Kibana, I think?
+        Logstash_Format On
+        Logstash_Prefix kubernetes
+        # When Logstash_Format is enabled, each record will get a new timestamp field.
+        # The Time_Key property defines the name of that field. It is set to "@time"
+        # because many applications log in JSON with an "@timestamp" field, and fluent-bit
+        # currently does not handle duplicate fields.
+        Time_Key        @time
+        # Append the Tag name to the record.
+        Include_Tag_Key On
+        Tag_Key         _tag
+        # Generate _id field for outgoing records. This prevents duplicate records
+        # when retrying log submission to Elasticsearch.
+        Generate_ID     On
+        # Replace field name dots with underscores. If not, fields that come from
+        # Kubernetes labels can result in mapping conflicts. One pod with an "app" label
+        # would conflict with another pod that has an "app.kubernetes.io" label.
+        Replace_Dots    On
+
+    # ------------------------------
+    # -- Systemd Elasticsearch Output
+    # ------------------------------
+
+    [OUTPUT]
+        Name            es
+        Match           systemd.*
+        Host            ${FLUENT_ELASTICSEARCH_HOST}
+        Port            ${FLUENT_ELASTICSEARCH_PORT}
+        # Name of the document type. "_doc" is what Fluentd uses.
+        Type            _doc
+        # Enable Logstash format compatibility. Required for Kibana, I think?
+        Logstash_Format On
+        Logstash_Prefix system
+        Time_Key        @time
+        # Append the Tag name to the record.
+        Include_Tag_Key On
+        Tag_Key         _tag
+        # Generate _id field for outgoing records. This prevents duplicate records
+        # when retrying log submission to Elasticsearch.
+        Generate_ID     On
+    
+  parsers.conf: |
+    [PARSER]
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+        Time_Keep   On
+
+    [PARSER]
+        Name   json
+        Format json
+        Time_Key time
+        Time_Format %d/%b/%Y:%H:%M:%S %z
+
+    [PARSER]
+        Name        syslog
+        Format      regex
+        Regex       ^\<(?<pri>[0-9]+)\>(?<time>[^ ]* {1,2}[^ ]* [^ ]*) (?<host>[^ ]*) (?<ident>[a-zA-Z0-9_\/\.\-]*)(?:\[(?<pid>[0-9]+)\])?(?:[^\:]*\:)? *(?<message>.*)$
+        Time_Key    time
+        Time_Format %b %d %H:%M:%S

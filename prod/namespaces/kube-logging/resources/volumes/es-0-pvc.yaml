@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elasticsearch-master-elasticsearch-master-0
+  namespace: kube-logging
+spec:
+  accessModes:
+  - ReadWriteMany
+  dataSource: null
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: local-storage
+  volumeName: es-0-pv

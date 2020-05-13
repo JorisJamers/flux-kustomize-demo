@@ -1,0 +1,21 @@
+# This is the api version we are going to use, for ingresses you will need to
+# use the extensions/v1beta1 api
+apiVersion: extensions/v1beta1
+# The kind of resource we are going to create is an ingress, this is why we
+# specify ingress in the kind block
+kind: Ingress
+# Metadata is mainly used for the name, when you apply this yaml the resource
+# will be named "kubeflow-storage-ingress"
+metadata:
+  name: enterprise-gateway-ingress
+  #annotations:
+# In the spec block you will going to be able to specify the service and the
+# serviceport where the ingress should route you to
+spec:
+  rules:
+  - host: url
+    http:
+      paths:
+      - backend:
+          serviceName: enterprise-gateway
+          servicePort: 8888

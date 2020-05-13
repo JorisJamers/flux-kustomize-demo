@@ -1,0 +1,7 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata: 
+  name: enterprise-gateway-ingress
+spec:
+  rules:
+  - host: enterprise-gateway.gluo.com

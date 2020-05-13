@@ -1,0 +1,3 @@
+resources: 
+- usernamespaces/testnamespace
+- namespaces/kube-logging

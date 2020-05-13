@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- configmap2.yaml 
+- daemonset.yaml 
+- role.yaml 
+- rolebinding.yaml 
+- serviceaccount.yaml 

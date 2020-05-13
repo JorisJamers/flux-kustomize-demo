@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: kube-logging
+  labels:
+    app: kibana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+      - name: gatekeeper
+        image: keycloak/keycloak-gatekeeper:7.0.0
+        ports:
+          - containerPort: 3000
+        args:
+          - --config=/etc/secrets/gatekeeper.yaml
+        resources:
+          limits:
+            cpu: 3000m
+            memory: 4Gi
+          requests:
+            cpu: 1000m
+            memory: 4Gi
+        volumeMounts:
+          - name: gatekeeper-secrets
+            mountPath: /etc/secrets
+      - name: kibana
+        image: docker.elastic.co/kibana/kibana-oss:7.6.1
+        volumeMounts: 
+          - name: config 
+            mountPath: "/usr/share/kibana/config/"
+        resources:
+          limits:
+            cpu: 3000m
+            memory: 4Gi
+          requests:
+            cpu: 1000m
+            memory: 4Gi
+        env:
+          - name: ELASTICSEARCH_HOSTS
+            value: http://elasticsearch-master:9200
+        ports:
+        - containerPort: 5601
+      volumes:
+        - name: config
+          configMap:
+            name: kibana
+        - name: gatekeeper-secrets
+          secret:
+            secretName: gatekeeper
+           
